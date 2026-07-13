@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(java -version)",
+      "Read(//Applications/Android Studio.app/Contents/jbr/Contents/Home/**)",
+      "Bash(\"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java\" -version)",
+      "Bash(/usr/libexec/java_home -V)",
+      "Bash(export JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\")",
+      "Bash(./gradlew :app:compileDebugKotlin --offline)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(./gradlew :app:assembleDebug)",
+      "Bash(mkdir -p domain/model domain/scheduling core/network data/dto data/remote data/repository)",
+      "Bash(sed 's/^package com.example.defensync.model$/package com.example.defensync.domain.model/' model/Models.kt)",
+      "Bash(rm -f app/google-services.json firestore.rules)",
+      "Bash(grep -rn \"firebase\\\\|firestore\\\\|google.services\\\\|com.google.gms\" app/src build.gradle.kts app/build.gradle.kts gradle/libs.versions.toml)",
+      "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb logcat *)",
+      "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb shell *)",
+      "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb install *)",
+      "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb exec-out *)",
+      "Bash(/Applications/XAMPP/bin/mysql -u root defensync -N -e 'SELECT id, email, api_token FROM users;')"
+    ]
+  }
+}
