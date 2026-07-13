@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -663,6 +664,7 @@ private fun DefenseTimePicker(
     var start by remember(defense.id) {
         mutableStateOf(defense.slot?.start ?: slots.firstOrNull()?.start ?: TimeConfig.DAY_START)
     }
+    var showOverride by remember(defense.id) { mutableStateOf(false) }
 
     // Mirror the current pick onto the overlap chart above; clear it when the picker goes away.
     LaunchedEffect(day, start) { onPreview(AlignedSlot(day, start)) }
@@ -734,24 +736,82 @@ private fun DefenseTimePicker(
             style = MaterialTheme.typography.bodyMedium,
             color = ConfirmGreen
         )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = { vm.selectSlot(defense.id, AlignedSlot(day, start)) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (defense.slot == null) "Confirm time & notify panel"
+                else "Change time & re-notify panel"
+            )
+        }
     } else {
-        Text(
-            "The panel isn't fully free from ${TimeConfig.label(start)} to ${TimeConfig.label(end)}. " +
-                "Pick a time inside a shared window.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error
-        )
+        // No shared window covers this block. The student can still override — e.g. after agreeing
+        // a time with the panel over chat — but it takes an explicit, warned-about confirmation.
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "The panel isn't all free from ${TimeConfig.label(start)} to ${TimeConfig.label(end)}. " +
+                    "Pick a time inside a shared window above — or, if the panel has already agreed to " +
+                    "this time, override below.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { showOverride = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error
+            )
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (defense.slot == null) "Override & set this time anyway"
+                else "Override & change to this time"
+            )
+        }
     }
 
-    Spacer(Modifier.height(12.dp))
-    Button(
-        onClick = { vm.selectSlot(defense.id, AlignedSlot(day, start)) },
-        enabled = fits,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            if (defense.slot == null) "Confirm time & notify panel"
-            else "Change time & re-notify panel"
+    if (showOverride) {
+        AlertDialog(
+            onDismissRequest = { showOverride = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Set a time outside everyone's availability?") },
+            text = {
+                Text(
+                    "${day.full}, ${TimeConfig.label(start)} – ${TimeConfig.label(end)} isn't inside a " +
+                        "3-hour window the whole panel is free.\n\n" +
+                        "Only do this if you've already contacted your adviser and panelists — for " +
+                        "example in the group chat — and they've agreed to this time. When they open " +
+                        "this defense they'll see a warning that it's outside the availability they " +
+                        "set, then accept or decline as usual."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showOverride = false
+                    vm.selectSlot(defense.id, AlignedSlot(day, start))
+                }) { Text("Set time & notify", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOverride = false }) { Text("Cancel") }
+            }
         )
     }
 }
@@ -767,6 +827,44 @@ private fun ResponsesCard(
         Column(Modifier.padding(16.dp)) {
             Text("Panel responses", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
+
+            // If the student overrode onto a time outside this member's own availability, warn them
+            // — the picked block doesn't fit any window they marked free for this panel.
+            val slot = defense.slot
+            val outsideMyAvailability = slot != null &&
+                currentUid in defense.memberIds &&
+                defense.status in listOf(DefenseStatus.PENDING, DefenseStatus.CONFIRMED) &&
+                !SchedulingEngine.fitsBlock(
+                    SchedulingEngine.mergeRanges(defense.rangesOf(currentUid, slot.weekday)),
+                    slot.start
+                )
+            if (outsideMyAvailability) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "This time is outside the availability you set for this panel. The student set " +
+                            "it as an override — only accept if you've already agreed to it with them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             defense.memberIds.forEach { memberId ->
                 val roleLabel = if (memberId == defense.adviserId) "Adviser" else "Panelist"
                 val name = defense.nameOf(memberId)
