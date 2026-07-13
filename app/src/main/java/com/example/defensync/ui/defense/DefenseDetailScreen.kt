@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -226,9 +227,12 @@ fun DefenseDetailScreen(
                 MyAvailabilityCard(defense, currentUid, vm)
             }
 
-            OverlapCard(defense)
+            // The student's in-progress time pick, previewed on the overlap chart above the picker.
+            var previewSlot by remember(defense.id) { mutableStateOf<AlignedSlot?>(null) }
 
-            AlignedTimesCard(defense, currentUid, vm, missing, slots)
+            OverlapCard(defense, previewSlot)
+
+            AlignedTimesCard(defense, currentUid, vm, missing, slots, onPreview = { previewSlot = it })
 
             ResponsesCard(defense, currentUid, vm, onOpenDm)
 
@@ -577,7 +581,7 @@ private fun MyAvailabilityCard(
 }
 
 @Composable
-private fun OverlapCard(defense: DefenseRequest) {
+private fun OverlapCard(defense: DefenseRequest, previewSlot: AlignedSlot? = null) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Availability overlap", style = MaterialTheme.typography.titleMedium)
@@ -588,7 +592,7 @@ private fun OverlapCard(defense: DefenseRequest) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
-            AlignmentGrid(defense)
+            AlignmentGrid(defense, previewSlot = previewSlot)
         }
     }
 }
@@ -599,7 +603,8 @@ private fun AlignedTimesCard(
     currentUid: String,
     vm: DefenseViewModel,
     missing: List<String>,
-    slots: List<AlignedSlot>
+    slots: List<AlignedSlot>,
+    onPreview: (AlignedSlot?) -> Unit
 ) {
     val studentCanPick = currentUid == defense.studentId &&
         defense.status in listOf(DefenseStatus.SCHEDULING, DefenseStatus.PENDING, DefenseStatus.DECLINED)
@@ -632,7 +637,7 @@ private fun AlignedTimesCard(
                     }
                 }
 
-                else -> DefenseTimePicker(defense, vm, slots)
+                else -> DefenseTimePicker(defense, vm, slots, onPreview)
             }
         }
     }
@@ -649,7 +654,8 @@ private fun AlignedTimesCard(
 private fun DefenseTimePicker(
     defense: DefenseRequest,
     vm: DefenseViewModel,
-    slots: List<AlignedSlot>
+    slots: List<AlignedSlot>,
+    onPreview: (AlignedSlot?) -> Unit
 ) {
     var day by remember(defense.id) {
         mutableStateOf(defense.slot?.weekday ?: slots.firstOrNull()?.weekday ?: Weekday.MON)
@@ -657,6 +663,10 @@ private fun DefenseTimePicker(
     var start by remember(defense.id) {
         mutableStateOf(defense.slot?.start ?: slots.firstOrNull()?.start ?: TimeConfig.DAY_START)
     }
+
+    // Mirror the current pick onto the overlap chart above; clear it when the picker goes away.
+    LaunchedEffect(day, start) { onPreview(AlignedSlot(day, start)) }
+    DisposableEffect(Unit) { onDispose { onPreview(null) } }
 
     val windows = SchedulingEngine.overlapRanges(defense.memberIds.map { defense.rangesOf(it, day) })
     val fits = SchedulingEngine.fitsBlock(windows, start)

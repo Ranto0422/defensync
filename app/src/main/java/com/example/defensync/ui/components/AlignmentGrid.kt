@@ -2,6 +2,7 @@ package com.example.defensync.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.defensync.domain.model.AlignedSlot
 import com.example.defensync.domain.model.DefenseRequest
 import com.example.defensync.domain.model.TimeConfig
 import com.example.defensync.domain.model.TimeRange
@@ -50,6 +53,7 @@ private val BarCorner = 4.dp
 
 private val TotalMinutes = TimeConfig.DAY_END - TimeConfig.DAY_START   // 07:00–21:00 = 840 min
 private val BodyH = HourDp * (TotalMinutes / 60)
+private val PreviewGreen = Color(0xFF1B5E20)                // "fits everyone" preview band
 
 /**
  * Availability timeline for a defense's panel (adviser + panelists; the student is excluded because
@@ -60,14 +64,21 @@ private val BodyH = HourDp * (TotalMinutes / 60)
  * panel shares, labelled with their times in the right-hand gutter.
  */
 @Composable
-fun AlignmentGrid(defense: DefenseRequest, modifier: Modifier = Modifier) {
+fun AlignmentGrid(
+    defense: DefenseRequest,
+    modifier: Modifier = Modifier,
+    previewSlot: AlignedSlot? = null
+) {
     val members = defense.memberIds
     var day by remember { mutableStateOf(defaultDay(defense)) }
+    // Follow the student's pick: when they choose a time below, jump the chart to that day.
+    LaunchedEffect(previewSlot) { previewSlot?.let { day = it.weekday } }
 
     val freeColor = MaterialTheme.colorScheme.secondary       // brand blue
     val everyoneColor = MaterialTheme.colorScheme.primary     // cardinal red accent
     val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val errorColor = MaterialTheme.colorScheme.error
 
     // Exact-minute availability for the selected day, clamped to the visible window.
     val memberRanges = members.map { uid ->
@@ -75,6 +86,9 @@ fun AlignmentGrid(defense: DefenseRequest, modifier: Modifier = Modifier) {
     }
     val overlap = SchedulingEngine.overlapRanges(members.map { uid -> defense.rangesOf(uid, day) })
         .mapNotNull { it.clampToDay() }
+
+    val preview = previewSlot?.takeIf { it.weekday == day }
+    val previewFits = preview != null && SchedulingEngine.fitsBlock(overlap, preview.start)
 
     Column(modifier) {
         Row(
@@ -102,13 +116,39 @@ fun AlignmentGrid(defense: DefenseRequest, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(4.dp))
 
-        Row(Modifier.fillMaxWidth()) {
-            TimeAxis()
-            memberRanges.forEach { ranges ->
-                Lane(Modifier.weight(1f), ranges, freeColor, trackColor, gridColor)
+        Box {
+            Row(Modifier.fillMaxWidth()) {
+                TimeAxis()
+                memberRanges.forEach { ranges ->
+                    Lane(Modifier.weight(1f), ranges, freeColor, trackColor, gridColor)
+                }
+                Lane(Modifier.weight(1f), overlap, everyoneColor, trackColor, gridColor)
+                WindowGutter(overlap, everyoneColor)
             }
-            Lane(Modifier.weight(1f), overlap, everyoneColor, trackColor, gridColor)
-            WindowGutter(overlap, everyoneColor)
+            // The student's candidate 3-hour block, drawn on top across the lanes: green when it fits
+            // a window everyone shares, red when it overruns one.
+            if (preview != null) {
+                val bandColor = if (previewFits) PreviewGreen else errorColor
+                Box(
+                    Modifier
+                        .padding(start = AxisW, end = GutterW)
+                        .offset(y = yFor(preview.start))
+                        .fillMaxWidth()
+                        .height(HourDp * (TimeConfig.DEFENSE / 60f))
+                        .clip(RoundedCornerShape(BarCorner))
+                        .background(bandColor.copy(alpha = 0.12f))
+                        .border(2.dp, bandColor, RoundedCornerShape(BarCorner))
+                ) {
+                    Text(
+                        "Your pick",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bandColor,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                    )
+                }
+            }
         }
     }
 }

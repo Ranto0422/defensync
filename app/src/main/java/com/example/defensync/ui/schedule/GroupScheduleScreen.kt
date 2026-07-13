@@ -2,10 +2,13 @@ package com.example.defensync.ui.schedule
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -209,10 +212,13 @@ private fun DefenseTimeCard(slot: AlignedSlot?, title: String) {
 private fun Timeline(lanes: List<ScheduleLane>, day: Weekday, slot: AlignedSlot?) {
     val freeColor = MaterialTheme.colorScheme.secondary
     val youColor = MaterialTheme.colorScheme.tertiary
+    val onFree = MaterialTheme.colorScheme.onSecondary
+    val onYou = MaterialTheme.colorScheme.onTertiary
     val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val highlight = MaterialTheme.colorScheme.primary
-    val showHighlight = slot != null && slot.weekday == day
+    // The confirmed slot only lights up when its own weekday is selected.
+    val bandSlot = slot?.takeIf { it.weekday == day }
 
     Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.padding(16.dp)) {
@@ -230,23 +236,47 @@ private fun Timeline(lanes: List<ScheduleLane>, day: Weekday, slot: AlignedSlot?
             }
             Spacer(Modifier.height(6.dp))
 
-            Row(Modifier.fillMaxWidth()) {
-                TimeAxis()
-                lanes.forEach { lane ->
-                    Lane(
-                        Modifier.weight(1f),
-                        ranges = SchedulingEngine.mergeRanges(lane.ranges[day].orEmpty())
-                            .mapNotNull { it.clampToDay() },
-                        barColor = if (lane.isYou) youColor else freeColor,
-                        trackColor = trackColor,
-                        gridColor = gridColor,
-                        highlight = if (showHighlight) slot else null,
-                        highlightColor = highlight
-                    )
+            // Body: availability lanes with a single defense-time band overlaid ON TOP, so the
+            // red stays visible even where a lane is fully free (its bar would otherwise cover it).
+            Box(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth()) {
+                    TimeAxis()
+                    lanes.forEach { lane ->
+                        Lane(
+                            Modifier.weight(1f),
+                            ranges = SchedulingEngine.mergeRanges(lane.ranges[day].orEmpty())
+                                .mapNotNull { it.clampToDay() },
+                            barColor = if (lane.isYou) youColor else freeColor,
+                            labelColor = if (lane.isYou) onYou else onFree,
+                            trackColor = trackColor,
+                            gridColor = gridColor
+                        )
+                    }
+                }
+                if (bandSlot != null) {
+                    Box(
+                        Modifier
+                            .padding(start = AxisW)
+                            .offset(y = yFor(bandSlot.start))
+                            .fillMaxWidth()
+                            .height(HourDp * ((bandSlot.end - bandSlot.start) / 60f))
+                            .clip(RoundedCornerShape(BarCorner))
+                            .background(highlight.copy(alpha = 0.14f))
+                            .border(2.dp, highlight, RoundedCornerShape(BarCorner))
+                    ) {
+                        Text(
+                            "Defense",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = highlight,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 6.dp, top = 2.dp)
+                        )
+                    }
                 }
             }
 
-            if (slot != null && !showHighlight) {
+            if (slot != null && bandSlot == null) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "The defense is on ${slot.weekday.full}. Tap ${slot.weekday.short} above to see it.",
@@ -263,10 +293,9 @@ private fun Lane(
     modifier: Modifier,
     ranges: List<TimeRange>,
     barColor: Color,
+    labelColor: Color,
     trackColor: Color,
-    gridColor: Color,
-    highlight: AlignedSlot?,
-    highlightColor: Color
+    gridColor: Color
 ) {
     Box(
         modifier
@@ -276,26 +305,36 @@ private fun Lane(
             .background(trackColor)
     ) {
         HourGridlines(gridColor)
-        // Confirmed-defense band sits behind the availability bars, tinting the whole window.
-        if (highlight != null) {
-            Box(
-                Modifier
-                    .offset(y = yFor(highlight.start))
-                    .fillMaxWidth()
-                    .height(HourDp * ((highlight.end - highlight.start) / 60f))
-                    .background(highlightColor.copy(alpha = 0.22f))
-            )
-        }
+        // Each free block is its own labelled bar, so split availability reads as distinct slots.
         ranges.forEach { r ->
+            val h = heightFor(r)
             Box(
                 Modifier
                     .offset(y = yFor(r.start))
                     .padding(horizontal = 3.dp)
                     .fillMaxWidth()
-                    .height(heightFor(r))
+                    .height(h)
                     .clip(RoundedCornerShape(BarCorner))
                     .background(barColor)
-            )
+            ) {
+                Text(
+                    compactTime(r.start),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = labelColor,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 2.dp)
+                )
+                if (h >= 30.dp) {
+                    Text(
+                        compactTime(r.end),
+                        fontSize = 8.sp,
+                        color = labelColor.copy(alpha = 0.85f),
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 2.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -356,42 +395,91 @@ private fun HeaderCell(title: String, subtitle: String, modifier: Modifier, acce
     }
 }
 
-/** Exact-minute breakdown for the selected day, so specific times (e.g. 3:33) are always legible. */
+/**
+ * Free-slots breakdown for the selected day. Each person's availability is shown as individual chips
+ * — one per continuous block — so split (non-continuous) availability reads as distinct time slots
+ * rather than a run-on comma-separated line. Exact minutes (e.g. 3:33) are always legible.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExactTimeList(lanes: List<ScheduleLane>, day: Weekday, slot: AlignedSlot?) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("${day.full} — exact times", style = MaterialTheme.typography.titleMedium)
+            Text("${day.full} — free slots", style = MaterialTheme.typography.titleMedium)
             if (slot != null && slot.weekday == day) {
-                Spacer(Modifier.height(6.dp))
-                Text(
+                Spacer(Modifier.height(8.dp))
+                SlotChip(
                     "Defense · ${TimeConfig.label(slot.start)} – ${TimeConfig.label(slot.end)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
+                    container = MaterialTheme.colorScheme.primary,
+                    content = MaterialTheme.colorScheme.onPrimary
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             lanes.forEach { lane ->
                 val ranges = SchedulingEngine.mergeRanges(lane.ranges[day].orEmpty())
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         lane.title,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(88.dp)
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(84.dp)
                     )
-                    Text(
-                        if (ranges.isEmpty()) "—"
-                        else ranges.joinToString(", ") { it.label },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (ranges.isEmpty()) {
+                        Text(
+                            "Not available",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        FlowRow(
+                            Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ranges.forEach { r ->
+                                SlotChip(
+                                    r.label,
+                                    container = MaterialTheme.colorScheme.secondaryContainer,
+                                    content = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SlotChip(text: String, container: Color, content: Color) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(container)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = content,
+            maxLines = 1
+        )
+    }
+}
+
+/** Short "h:mm" (no AM/PM) for the on-bar labels — the axis + bar position already convey AM/PM. */
+private fun compactTime(minutes: Int): String {
+    val h24 = (minutes / 60) % 24
+    val m = minutes % 60
+    val h = when (val hh = h24 % 12) { 0 -> 12; else -> hh }
+    return "$h:${m.toString().padStart(2, '0')}"
 }
 
 private fun yFor(minute: Int): Dp = HourDp * ((minute - TimeConfig.DAY_START) / 60f)
