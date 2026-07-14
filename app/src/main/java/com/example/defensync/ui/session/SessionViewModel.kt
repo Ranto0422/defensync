@@ -26,12 +26,17 @@ data class AuthFormState(
 class SessionViewModel : ViewModel() {
 
     private val auth = ServiceLocator.authRepository
+    private val server = ServiceLocator.serverConfig
 
     private val _session = MutableStateFlow<SessionState>(SessionState.Loading)
     val session: StateFlow<SessionState> = _session.asStateFlow()
 
     private val _form = MutableStateFlow(AuthFormState())
     val form: StateFlow<AuthFormState> = _form.asStateFlow()
+
+    // Editable API address, so a physical device can point at the LAN machine running XAMPP.
+    private val _serverUrl = MutableStateFlow(server.baseUrl)
+    val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
 
     init {
         restoreSession()
@@ -54,6 +59,12 @@ class SessionViewModel : ViewModel() {
     }
 
     fun clearError() { _form.value = _form.value.copy(error = null) }
+
+    /** Persist the API base URL (normalized) and apply it to every subsequent request. */
+    fun updateServerUrl(url: String) {
+        server.baseUrl = url
+        _serverUrl.value = server.baseUrl
+    }
 
     fun signIn(email: String, password: String) {
         if (!validate(email, password)) return

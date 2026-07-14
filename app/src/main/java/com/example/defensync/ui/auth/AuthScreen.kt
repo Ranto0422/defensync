@@ -9,13 +9,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
@@ -28,6 +33,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -239,7 +245,73 @@ fun AuthScreen(vm: SessionViewModel) {
                         else "New here? Create an account"
                     )
                 }
+
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+                ServerAddressSection(vm)
             }
+        }
+    }
+}
+
+/**
+ * Collapsible control for the API server address. Needed to run against a XAMPP machine over the LAN
+ * (e.g. from a physical phone): set the host's address here once and it's persisted. Collapsed by
+ * default so it stays out of the way for normal sign-in.
+ */
+@Composable
+private fun ServerAddressSection(vm: SessionViewModel) {
+    val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
+    var expanded by remember { mutableStateOf(false) }
+    var field by remember { mutableStateOf(serverUrl) }
+    // Re-sync the field to the persisted (normalized) value after a save.
+    LaunchedEffect(serverUrl) { field = serverUrl }
+    val dirty = field.trim() != serverUrl
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Server address", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    serverUrl,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (expanded) "Collapse" else "Expand"
+            )
+        }
+
+        if (expanded) {
+            OutlinedTextField(
+                value = field,
+                onValueChange = { field = it },
+                label = { Text("API base URL") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Address of the computer running XAMPP, e.g. http://192.168.50.200/defensync/. " +
+                    "Use 10.0.2.2 for the Android emulator.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { vm.updateServerUrl(field) },
+                enabled = dirty,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (dirty) "Save server address" else "Saved ✓") }
         }
     }
 }

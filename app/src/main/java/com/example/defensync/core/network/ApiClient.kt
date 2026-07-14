@@ -16,14 +16,48 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
-/** Where the PHP API lives. 10.0.2.2 is the host machine as seen from the Android emulator. */
+/**
+ * Where the PHP API lives. [DEFAULT_BASE_URL]'s 10.0.2.2 is the host machine as seen from the Android
+ * emulator; on a physical phone it's overridden at runtime with the XAMPP machine's LAN IP (edited on
+ * the sign-in screen, persisted by [ServerConfig], restored at startup by ServiceLocator).
+ */
 object ApiConfig {
-    // Physical device on the same Wi-Fi: replace with your Mac's LAN IP, e.g. "http://192.168.1.20/defensync/"
-    const val BASE_URL = "http://10.0.2.2/defensync/"
+    const val DEFAULT_BASE_URL = "http://10.0.2.2/defensync/"
+
+    @Volatile
+    var baseUrl: String = DEFAULT_BASE_URL
 }
 
 /** Thrown when the API returns a non-2xx status; message is the server's error text. */
 class ApiException(message: String) : Exception(message)
+
+/**
+ * Persists the API base URL across launches, so a physical device can point at the LAN address of the
+ * machine running XAMPP without rebuilding. Writing also updates the live [ApiConfig.baseUrl].
+ */
+class ServerConfig(context: Context) {
+    private val prefs = context.getSharedPreferences("defensync_prefs", Context.MODE_PRIVATE)
+
+    var baseUrl: String
+        get() = prefs.getString(KEY_BASE_URL, ApiConfig.DEFAULT_BASE_URL) ?: ApiConfig.DEFAULT_BASE_URL
+        set(value) {
+            val normalized = normalize(value)
+            prefs.edit().putString(KEY_BASE_URL, normalized).apply()
+            ApiConfig.baseUrl = normalized
+        }
+
+    private companion object {
+        const val KEY_BASE_URL = "server_base_url"
+
+        /** Tidy user input: blank → default; add http:// if no scheme; ensure a single trailing slash. */
+        fun normalize(raw: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return ApiConfig.DEFAULT_BASE_URL
+            val withScheme = if (trimmed.contains("://")) trimmed else "http://$trimmed"
+            return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+        }
+    }
+}
 
 /** Persists the auth token across app launches. */
 class TokenStore(context: Context) {
@@ -60,7 +94,7 @@ fun createHttpClient(tokenStore: TokenStore): HttpClient = HttpClient(OkHttp) {
 }
 
 /** Absolute URL for an API path (paths are given without a leading slash). */
-fun apiUrl(path: String): String = ApiConfig.BASE_URL + path
+fun apiUrl(path: String): String = ApiConfig.baseUrl + path
 
 /** Returns the response if 2xx, otherwise throws [ApiException] with the server's message. */
 suspend fun HttpResponse.orThrow(): HttpResponse {
