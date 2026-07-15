@@ -26,7 +26,8 @@ Cloud Functions.
 1. Sign up as **Student** or **Professor**.
 2. On **My Schedule**, mark the hours you're usually free — a reusable default template.
 3. A **student** creates a defense **group** (title, one adviser, panelists, optional co-students).
-4. Inside the group, each participant tweaks availability *for that group* (seeded from their default).
+4. Inside the group, each participant tweaks availability *for that group* (seeded from their default;
+   untouched copies keep following default-schedule edits).
 5. The app lists every **3 consecutive free hours** that works for everyone.
 6. The student picks (or types) a window → each member **Accepts/Declines** → all accept ⇒ **Confirmed**.
 

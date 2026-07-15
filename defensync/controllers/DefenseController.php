@@ -83,7 +83,8 @@ class DefenseController
                 $insStudent->execute([$defenseId, $sid]);
             }
 
-            // Seed per-group availability from each participant's default schedule.
+            // Seed per-group availability from each participant's default schedule. Later default
+            // edits refresh this copy until the participant edits their availability in the group.
             $placeholders = implode(',', array_fill(0, count($participantIds), '?'));
             $db->prepare(
                 "INSERT INTO defense_availability (defense_id, user_id, weekday, start_min, end_min)
@@ -310,7 +311,8 @@ class DefenseController
                 $insResp->execute([$id, $mid, 'PENDING']);
             }
 
-            // Prune availability for anyone no longer in the group; seed newcomers from their default.
+            // Prune availability for anyone no longer in the group; seed newcomers from their
+            // default. Their copy follows future default edits until changed inside the group.
             $allParticipants = array_values(array_unique(array_merge($studentIds, $newMembers)));
             $keep = implode(',', array_fill(0, count($allParticipants), '?'));
             $db->prepare("DELETE FROM defense_availability WHERE defense_id = ? AND user_id NOT IN ($keep)")

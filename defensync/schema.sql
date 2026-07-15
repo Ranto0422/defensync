@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS defense_students (
     FOREIGN KEY (student_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
--- Per-group availability ranges, seeded from each participant's default at creation.
+-- Per-group availability ranges, seeded from each participant's default. Default schedule edits
+-- refresh rows that still match the old default; group-edited rows are treated as manual overrides.
 CREATE TABLE IF NOT EXISTS defense_availability (
     id         INT AUTO_INCREMENT PRIMARY KEY,
     defense_id INT NOT NULL,
