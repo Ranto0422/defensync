@@ -268,8 +268,8 @@ data class DefenseRequest(
     /** Everyone in the group: students + members. */
     val participantIds: List<String> get() = (students + memberIds).distinct()
 
-    /** The owning student and the adviser may edit the group's membership. */
-    fun canEdit(uid: String): Boolean = uid == studentId || uid == adviserId
+    /** Only the owning student may edit the group's membership. */
+    fun canEdit(uid: String): Boolean = uid == studentId
 
     fun responseOf(uid: String): ResponseStatus = responses[uid] ?: ResponseStatus.PENDING
 
