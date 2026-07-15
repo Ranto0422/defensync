@@ -22,6 +22,11 @@ if ($base !== '' && strpos($uri, $base) === 0) {
     $path = substr($uri, strlen($base));
 }
 $path = trim($path, '/');
+if ($path === 'index.php') {
+    $path = '';
+} elseif (strpos($path, 'index.php/') === 0) {
+    $path = substr($path, strlen('index.php/'));
+}
 $segments = $path === '' ? [] : explode('/', $path);
 
 $auth = new AuthController();
