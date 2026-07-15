@@ -204,7 +204,7 @@ fun MainScaffold(
                 )
             }
             composable(Tab.Calendar.route) {
-                CalendarScreen()
+                CalendarScreen(vm = defenseVm)
             }
             composable(Tab.Schedule.route) {
                 ScheduleScreen(accountKey = profile.uid)
