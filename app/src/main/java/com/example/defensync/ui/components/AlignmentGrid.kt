@@ -67,7 +67,8 @@ private val PreviewGreen = Color(0xFF1B5E20)                // "fits everyone" p
 fun AlignmentGrid(
     defense: DefenseRequest,
     modifier: Modifier = Modifier,
-    previewSlot: AlignedSlot? = null
+    previewSlot: AlignedSlot? = null,
+    previewLabel: String = "Your pick"
 ) {
     val members = defense.memberIds
     var day by remember { mutableStateOf(defaultDay(defense)) }
@@ -88,7 +89,8 @@ fun AlignmentGrid(
         .mapNotNull { it.clampToDay() }
 
     val preview = previewSlot?.takeIf { it.weekday == day }
-    val previewFits = preview != null && SchedulingEngine.fitsBlock(overlap, preview.start)
+    val previewFits = preview != null &&
+        SchedulingEngine.fitsBlock(overlap, preview.start, preview.durationMin)
 
     Column(modifier) {
         Row(
@@ -134,13 +136,13 @@ fun AlignmentGrid(
                         .padding(start = AxisW, end = GutterW)
                         .offset(y = yFor(preview.start))
                         .fillMaxWidth()
-                        .height(HourDp * (TimeConfig.DEFENSE / 60f))
+                        .height(HourDp * (preview.durationMin / 60f))
                         .clip(RoundedCornerShape(BarCorner))
                         .background(bandColor.copy(alpha = 0.12f))
                         .border(2.dp, bandColor, RoundedCornerShape(BarCorner))
                 ) {
                     Text(
-                        "Your pick",
+                        previewLabel,
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
                         color = bandColor,

@@ -1,6 +1,8 @@
 package com.example.defensync.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Info
@@ -38,13 +42,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.defensync.core.network.SavedAccount
 import com.example.defensync.domain.model.Role
 import com.example.defensync.domain.model.UserProfile
 import com.example.defensync.domain.model.Weekday
 import com.example.defensync.domain.scheduling.SchedulingEngine
 
 @Composable
-fun ProfileScreen(profile: UserProfile, onSignOut: () -> Unit) {
+fun ProfileScreen(
+    profile: UserProfile,
+    accounts: List<SavedAccount>,
+    onSwitch: (SavedAccount) -> Unit,
+    onAddAccount: () -> Unit,
+    onSignOut: () -> Unit
+) {
     val daysFree = profile.availability.count { it.value.isNotEmpty() }
     val freeMinutes = profile.availability.values.flatten().sumOf { (it.end - it.start).coerceAtLeast(0) }
     val hoursLabel =
@@ -67,6 +78,13 @@ fun ProfileScreen(profile: UserProfile, onSignOut: () -> Unit) {
         WeeklyAvailabilityCard(profile)
 
         AccountCard(profile)
+
+        SwitchAccountCard(
+            accounts = accounts,
+            currentUid = profile.uid,
+            onSwitch = onSwitch,
+            onAddAccount = onAddAccount
+        )
 
         Button(
             onClick = onSignOut,
@@ -239,6 +257,131 @@ private fun WeeklyAvailabilityCard(profile: UserProfile) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SwitchAccountCard(
+    accounts: List<SavedAccount>,
+    currentUid: String,
+    onSwitch: (SavedAccount) -> Unit,
+    onAddAccount: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "FOR TESTING PURPOSES ONLY",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 0.8.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Tap an account to switch instantly — no password needed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(14.dp))
+
+            // 2-column grid of account tiles, plus a final "+ Add account" tile.
+            val tileCount = accounts.size + 1
+            (0 until tileCount).chunked(2).forEach { pair ->
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    pair.forEach { idx ->
+                        if (idx < accounts.size) {
+                            val acc = accounts[idx]
+                            AccountTile(
+                                account = acc,
+                                active = acc.uid == currentUid,
+                                onClick = { onSwitch(acc) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            AddAccountTile(onAddAccount, Modifier.weight(1f))
+                        }
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountTile(
+    account: SavedAccount,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .heightIn(min = 76.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else MaterialTheme.colorScheme.surface
+            )
+            .border(
+                width = if (active) 1.5.dp else 1.dp,
+                color = if (active) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(enabled = !active, onClick = onClick)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            account.name.ifBlank { account.email },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            Role.from(account.role).label.lowercase(),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (active) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun AddAccountTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .heightIn(min = 76.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Default.Add,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Add account",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

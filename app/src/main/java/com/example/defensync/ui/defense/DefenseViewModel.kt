@@ -34,6 +34,10 @@ class DefenseViewModel : ViewModel() {
     private val _defenses = MutableStateFlow<List<DefenseRequest>>(emptyList())
     val defenses: StateFlow<List<DefenseRequest>> = _defenses.asStateFlow()
 
+    /** Every scheduled defense in the system, for flagging double-booking conflicts as a time is picked. */
+    private val _calendarEntries = MutableStateFlow<List<com.example.defensync.domain.model.CalendarEntry>>(emptyList())
+    val calendarEntries: StateFlow<List<com.example.defensync.domain.model.CalendarEntry>> = _calendarEntries.asStateFlow()
+
     private val _faculty = MutableStateFlow<List<UserProfile>>(emptyList())
     val faculty: StateFlow<List<UserProfile>> = _faculty.asStateFlow()
 
@@ -42,6 +46,10 @@ class DefenseViewModel : ViewModel() {
 
     private val _submit = MutableStateFlow<SubmitState>(SubmitState.Idle)
     val submit: StateFlow<SubmitState> = _submit.asStateFlow()
+
+    /** Last error from an inline action (e.g. a rejected slot: conflict or daily cap). Null when clear. */
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
     init {
         refreshPeople()
@@ -66,6 +74,14 @@ class DefenseViewModel : ViewModel() {
 
     private suspend fun refresh() {
         runCatching { repo.list() }.onSuccess { _defenses.value = it }
+        runCatching { repo.calendar() }.onSuccess { _calendarEntries.value = it }
+    }
+
+    /** Refresh account-scoped data immediately (e.g. after an account switch) rather than waiting for
+     *  the next poll, so this tab doesn't briefly show the previous account's defenses. */
+    fun reload() {
+        refreshPeople()
+        viewModelScope.launch { refresh() }
     }
 
     fun resetSubmit() { _submit.value = SubmitState.Idle }
@@ -114,9 +130,16 @@ class DefenseViewModel : ViewModel() {
         }
     }
 
+    fun clearActionError() { _actionError.value = null }
+
     fun selectSlot(defenseId: String, slot: AlignedSlot) {
         viewModelScope.launch {
-            runCatching { repo.selectSlot(defenseId, slot) }.onSuccess { updateOne(it) }
+            runCatching { repo.selectSlot(defenseId, slot) }
+                .onSuccess {
+                    _actionError.value = null
+                    updateOne(it)
+                }
+                .onFailure { _actionError.value = it.message ?: "Could not set the time" }
         }
     }
 

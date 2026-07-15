@@ -11,14 +11,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -51,45 +53,52 @@ fun DefenseListScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             if (profile.role == Role.STUDENT) {
-                ExtendedFloatingActionButton(
-                    onClick = onCreate,
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("New defense") }
-                )
+                FloatingActionButton(onClick = onCreate) {
+                    Icon(Icons.Default.Add, contentDescription = "New defense")
+                }
             }
         }
     ) { padding ->
-        if (defenses.isEmpty()) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (profile.role == Role.STUDENT)
-                        "No defenses yet.\nTap “New defense” to propose one."
-                    else
-                        "No defense invitations yet.\nStudents will appear here when they invite you.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(defenses, key = { it.id }) { defense ->
-                    DefenseCard(
-                        defense = defense,
-                        currentUid = profile.uid,
-                        onClick = { onOpen(defense.id) }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Text(
+                "Your defenses",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+            )
+            if (defenses.isEmpty()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (profile.role == Role.STUDENT)
+                            "No defenses yet.\nTap the + button to propose one."
+                        else
+                            "No defense invitations yet.\nStudents will appear here when they invite you.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(defenses, key = { it.id }) { defense ->
+                        DefenseCard(
+                            defense = defense,
+                            currentUid = profile.uid,
+                            onClick = { onOpen(defense.id) }
+                        )
+                    }
                 }
             }
         }
@@ -111,23 +120,23 @@ private fun DefenseCard(defense: DefenseRequest, currentUid: String, onClick: ()
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (defense.unreadMessages > 0) {
-                        androidx.compose.material3.Badge(
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) { Text("${defense.unreadMessages} 💬") }
-                    }
-                    StatusChip(defense.status)
-                }
+                StatusChip(defense.status)
             }
             Spacer(Modifier.height(6.dp))
+            val studentsLabel = defense.studentNames.takeIf { it.isNotEmpty() }
+                ?.joinToString(", ") ?: defense.studentName
             Text(
-                "Student: ${defense.studentName}",
+                "Students: $studentsLabel",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                defense.slot?.label ?: "Time not chosen yet",
+                "Adviser: ${defense.adviserName.ifBlank { "Unassigned" }}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Time: ${defense.slot?.label ?: "Not chosen yet"}",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(6.dp))
@@ -139,19 +148,53 @@ private fun DefenseCard(defense: DefenseRequest, currentUid: String, onClick: ()
                 currentUid in defense.memberIds &&
                 defense.responseOf(currentUid) == com.example.defensync.domain.model.ResponseStatus.PENDING
             val highlight = needsMyAvailability || awaitingMyResponse
-            Text(
-                when {
-                    needsMyAvailability -> "⚑ Add your availability"
-                    awaitingMyResponse -> "⚑ Awaiting your response"
-                    defense.status == DefenseStatus.SCHEDULING -> "Choosing a time"
-                    else -> "${defense.acceptedCount}/${defense.memberIds.size} accepted"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = if (highlight) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    when {
+                        needsMyAvailability -> "⚑ Add your availability"
+                        awaitingMyResponse -> "⚑ Awaiting your response"
+                        defense.status == DefenseStatus.SCHEDULING -> "Choosing a time"
+                        else -> "${defense.acceptedCount}/${defense.memberIds.size} accepted"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (highlight) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.weight(1f)
+                )
+                if (defense.unreadMessages > 0) ChatCountPill(defense.unreadMessages)
+            }
         }
+    }
+}
+
+/** Small pink pill with a chat icon + unread count, shown at a card's bottom-right. */
+@Composable
+private fun ChatCountPill(count: Int) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            Icons.AutoMirrored.Filled.Chat,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            count.toString(),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

@@ -14,6 +14,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 /**
@@ -59,9 +61,24 @@ class ServerConfig(context: Context) {
     }
 }
 
-/** Persists the auth token across app launches. */
+/** An account remembered on this device, so the user can switch without re-typing a password. */
+@Serializable
+data class SavedAccount(
+    val uid: String,
+    val name: String,
+    val email: String,
+    val role: String,
+    val token: String
+)
+
+/**
+ * Persists the active auth token plus the list of accounts that have signed in on this device
+ * (for one-tap account switching). [token] is always the active account's token.
+ */
 class TokenStore(context: Context) {
     private val prefs = context.getSharedPreferences("defensync_prefs", Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true }
+    private val accountsSerializer = ListSerializer(SavedAccount.serializer())
 
     var token: String?
         get() = prefs.getString(KEY_TOKEN, null)
@@ -71,10 +88,47 @@ class TokenStore(context: Context) {
             }.apply()
         }
 
-    fun clear() { token = null }
+    /** All accounts remembered on this device. */
+    var accounts: List<SavedAccount>
+        get() = prefs.getString(KEY_ACCOUNTS, null)
+            ?.let { runCatching { json.decodeFromString(accountsSerializer, it) }.getOrNull() }
+            ?: emptyList()
+        private set(value) {
+            prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(accountsSerializer, value)).apply()
+        }
+
+    /** Add or refresh an account (matched by uid) and make it the active one.
+     *  Keeps existing accounts in their original position so the switcher list stays stable. */
+    fun upsertActive(account: SavedAccount) {
+        val current = accounts
+        accounts = if (current.any { it.uid == account.uid }) {
+            current.map { if (it.uid == account.uid) account else it }
+        } else {
+            current + account
+        }
+        token = account.token
+    }
+
+    /** Make an already-saved account the active one. */
+    fun setActive(account: SavedAccount) {
+        token = account.token
+    }
+
+    /** Forget the current account; return the next remembered account (now active) or null. */
+    fun removeActive(currentUid: String): SavedAccount? {
+        accounts = accounts.filterNot { it.uid == currentUid }
+        val next = accounts.firstOrNull()
+        token = next?.token
+        return next
+    }
+
+    fun clear() {
+        token = null
+    }
 
     private companion object {
         const val KEY_TOKEN = "auth_token"
+        const val KEY_ACCOUNTS = "saved_accounts"
     }
 }
 

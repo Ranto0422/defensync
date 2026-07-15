@@ -2,6 +2,7 @@ package com.example.defensync.data.remote
 
 import com.example.defensync.core.network.apiUrl
 import com.example.defensync.core.network.orThrow
+import com.example.defensync.data.dto.CalendarEntryDto
 import com.example.defensync.data.dto.CreateDefenseRequest
 import com.example.defensync.data.dto.DefenseDto
 import com.example.defensync.data.dto.MessageDto
@@ -21,6 +22,10 @@ class DefenseApi(private val http: HttpClient) {
 
     suspend fun list(): List<DefenseDto> =
         http.get(apiUrl("defenses")).orThrow().body()
+
+    /** Every scheduled defense in the system (shared calendar), regardless of participation. */
+    suspend fun calendar(): List<CalendarEntryDto> =
+        http.get(apiUrl("calendar")).orThrow().body()
 
     suspend fun create(req: CreateDefenseRequest): DefenseDto =
         http.post(apiUrl("defenses")) { setBody(req) }.orThrow().body()

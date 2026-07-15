@@ -74,22 +74,25 @@ object SchedulingEngine {
         return result
     }
 
-    /** True when [ranges] cover the entire 3-hour block starting at [start]. */
-    fun coversDefense(ranges: List<TimeRange>, start: Int): Boolean {
+    /** True when [ranges] cover the entire [duration]-long block starting at [start]. */
+    fun coversDefense(ranges: List<TimeRange>, start: Int, duration: Int = TimeConfig.DEFENSE): Boolean {
         val slots = coveredSlots(ranges)
-        return (start until start + TimeConfig.DEFENSE step TimeConfig.SLOT).all { it in slots }
+        return (start until start + duration step TimeConfig.SLOT).all { it in slots }
     }
 
     /**
-     * Exact-minute check that a full 3-hour defense block starting at [start] fits entirely inside
-     * one of the shared [windows] (typically the output of [overlapRanges]). Unlike [coversDefense]
-     * this does not snap to the 30-min grid, so an arbitrary start like 10:33 is honored.
+     * Exact-minute check that a full [duration]-long defense block starting at [start] fits entirely
+     * inside one of the shared [windows] (typically the output of [overlapRanges]). Unlike
+     * [coversDefense] this does not snap to the 30-min grid, so an arbitrary start like 10:33 is honored.
      */
-    fun fitsBlock(windows: List<TimeRange>, start: Int): Boolean =
-        windows.any { it.start <= start && start + TimeConfig.DEFENSE <= it.end }
+    fun fitsBlock(windows: List<TimeRange>, start: Int, duration: Int = TimeConfig.DEFENSE): Boolean =
+        windows.any { it.start <= start && start + duration <= it.end }
 
-    /** [participants] is one weekday -> ranges map per participant. */
-    fun findAlignedSlots(participants: List<Map<Weekday, List<TimeRange>>>): List<AlignedSlot> {
+    /** [participants] is one weekday -> ranges map per participant; slots are [duration]-long. */
+    fun findAlignedSlots(
+        participants: List<Map<Weekday, List<TimeRange>>>,
+        duration: Int = TimeConfig.DEFENSE
+    ): List<AlignedSlot> {
         if (participants.isEmpty() || participants.any { p -> p.values.all { it.isEmpty() } }) {
             return emptyList()
         }
@@ -101,10 +104,10 @@ object SchedulingEngine {
                 .reduce { acc, s -> acc intersect s }
             if (common.isEmpty()) continue
 
-            for (start in TimeConfig.defenseStarts) {
-                val fits = (start until start + TimeConfig.DEFENSE step TimeConfig.SLOT)
+            for (start in TimeConfig.defenseStarts(duration)) {
+                val fits = (start until start + duration step TimeConfig.SLOT)
                     .all { it in common }
-                if (fits) slots.add(AlignedSlot(day, start))
+                if (fits) slots.add(AlignedSlot(day, start, durationMin = duration))
             }
         }
         return slots

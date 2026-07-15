@@ -29,9 +29,20 @@ class ScheduleViewModel : ViewModel() {
     private val _ui = MutableStateFlow(ScheduleUiState())
     val ui: StateFlow<ScheduleUiState> = _ui.asStateFlow()
 
-    init {
+    /** Whose availability is currently loaded. Guards against reloading (and wiping unsaved edits)
+     *  when the same account re-enters the screen, while still refreshing after an account switch. */
+    private var loadedForUid: String? = null
+
+    /** Load this account's default availability. No-op if it's already the loaded account, so
+     *  re-entering the tab keeps any unsaved edits; a real account switch (new uid) reloads. */
+    fun reloadFor(uid: String) {
+        if (uid == loadedForUid) return
+        loadedForUid = uid
+        _ui.value = _ui.value.copy(loading = true, dirty = false, justSaved = false)
         viewModelScope.launch {
-            runCatching { users.getDefaultAvailability() }.onSuccess { _selection.value = it }
+            runCatching { users.getDefaultAvailability() }
+                .onSuccess { _selection.value = it }
+                .onFailure { _selection.value = emptyMap() }
             _ui.value = _ui.value.copy(loading = false)
         }
     }

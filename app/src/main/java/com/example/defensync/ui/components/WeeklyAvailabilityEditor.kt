@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -72,18 +71,19 @@ fun WeeklyAvailabilityEditor(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                LabeledTime(
-                                    caption = "From",
+                                TimeBox(
                                     value = range.start,
-                                    onValueChange = { onUpdateRange(day, index, range.copy(start = it)) }
+                                    onValueChange = { onUpdateRange(day, index, range.copy(start = it)) },
+                                    label = "From",
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Text("–", modifier = Modifier.padding(top = 14.dp))
-                                LabeledTime(
-                                    caption = "To",
+                                Text("to", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TimeBox(
                                     value = range.end,
-                                    onValueChange = { onUpdateRange(day, index, range.copy(end = it)) }
+                                    onValueChange = { onUpdateRange(day, index, range.copy(end = it)) },
+                                    label = "To",
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Spacer(Modifier.weight(1f))
                                 IconButton(onClick = { onRemoveRange(day, index) }) {
                                     Icon(Icons.Default.Close, contentDescription = "Remove")
                                 }
@@ -100,19 +100,5 @@ fun WeeklyAvailabilityEditor(
                 }
             }
         }
-        Spacer(Modifier.height(0.dp))
-    }
-}
-
-/** A small "From"/"To" caption stacked above a compact [TimeField] chip. */
-@Composable
-private fun LabeledTime(caption: String, value: Int, onValueChange: (Int) -> Unit) {
-    Column(horizontalAlignment = Alignment.Start) {
-        Text(
-            caption,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        TimeField(value = value, onValueChange = onValueChange, label = caption)
     }
 }

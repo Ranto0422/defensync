@@ -1,5 +1,7 @@
 package com.example.defensync.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Surface
@@ -64,6 +67,49 @@ fun TimeField(
         },
         modifier = modifier
     )
+
+    if (showDialog) {
+        TimePickerDialog(
+            title = label,
+            initialMinutes = value.coerceIn(minMinutes, maxMinutes),
+            onDismiss = { showDialog = false },
+            onConfirm = { picked ->
+                onValueChange(picked.coerceIn(minMinutes, maxMinutes))
+                showDialog = false
+            }
+        )
+    }
+}
+
+/**
+ * A time control rendered as a filled rounded box showing the current time (e.g. "9:00 AM"), no
+ * caption or icon. Tapping opens the same [TimePickerDialog] as [TimeField]. Minutes-from-midnight.
+ */
+@Composable
+fun TimeBox(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    minMinutes: Int = TimeConfig.DAY_START,
+    maxMinutes: Int = TimeConfig.DAY_END
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { showDialog = true }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            TimeConfig.label(value),
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1
+        )
+    }
 
     if (showDialog) {
         TimePickerDialog(

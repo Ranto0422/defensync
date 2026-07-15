@@ -39,9 +39,32 @@ data class UpdateMembersRequest(
     val studentIds: List<String>
 )
 
-/** A picked defense start: weekday name + start minutes-from-midnight. */
+/**
+ * A picked defense start: weekday name + start minutes-from-midnight, plus the calendar [date]
+ * (yyyy-MM-dd) and the chosen [durationMin]. `weekday` is ignored on write (the server derives it
+ * from `date`) but kept for the response shape.
+ */
 @Serializable
-data class SlotDto(val weekday: String, val start: Int)
+data class SlotDto(
+    val weekday: String,
+    val start: Int,
+    val date: String? = null,
+    val durationMin: Int = 180
+)
+
+/** One scheduled defense in the shared, system-wide calendar feed. */
+@Serializable
+data class CalendarEntryDto(
+    val id: String,
+    val title: String = "",
+    val adviserName: String = "",
+    val panelistNames: List<String> = emptyList(),
+    val facultyIds: List<String> = emptyList(),
+    val date: String = "",
+    val start: Int = 0,
+    val durationMin: Int = 180,
+    val status: String = "PENDING"
+)
 
 @Serializable
 data class RespondRequest(val accept: Boolean)
@@ -148,6 +171,19 @@ fun InboxItemDto.toDomain(): com.example.defensync.domain.model.InboxItem =
         unread = unread
     )
 
+fun CalendarEntryDto.toDomain(): com.example.defensync.domain.model.CalendarEntry =
+    com.example.defensync.domain.model.CalendarEntry(
+        id = id,
+        title = title,
+        adviserName = adviserName,
+        panelistNames = panelistNames,
+        facultyIds = facultyIds,
+        date = date,
+        start = start,
+        durationMin = durationMin,
+        status = DefenseStatus.from(status)
+    )
+
 fun UserDto.toDomain(): UserProfile = UserProfile(
     uid = id,
     name = name,
@@ -169,7 +205,9 @@ fun DefenseDto.toDomain(): DefenseRequest = DefenseRequest(
     panelistIds = panelistIds,
     panelistNames = panelistNames,
     availability = availability.mapValues { (_, days) -> days.toRangeMap() },
-    slot = slot?.let { AlignedSlot(Weekday.from(it.weekday), it.start) },
+    slot = slot?.let {
+        AlignedSlot(Weekday.from(it.weekday), it.start, date = it.date, durationMin = it.durationMin)
+    },
     responses = responses.mapValues { (_, v) ->
         runCatching { ResponseStatus.valueOf(v) }.getOrDefault(ResponseStatus.PENDING)
     },

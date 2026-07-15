@@ -51,7 +51,7 @@ import com.example.defensync.domain.model.Role
 import com.example.defensync.ui.session.SessionViewModel
 
 @Composable
-fun AuthScreen(vm: SessionViewModel) {
+fun AuthScreen(vm: SessionViewModel, onCancel: (() -> Unit)? = null) {
     var isSignUp by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -244,6 +244,14 @@ fun AuthScreen(vm: SessionViewModel) {
                         if (isSignUp) "Already have an account? Sign in"
                         else "New here? Create an account"
                     )
+                }
+
+                // When adding another account, allow backing out to the current session.
+                if (onCancel != null) {
+                    TextButton(
+                        onClick = { vm.clearError(); onCancel() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Cancel — keep using current account") }
                 }
 
                 Spacer(Modifier.height(4.dp))

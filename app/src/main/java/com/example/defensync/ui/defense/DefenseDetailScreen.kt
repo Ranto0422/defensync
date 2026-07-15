@@ -1,6 +1,7 @@
 package com.example.defensync.ui.defense
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,11 +54,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +75,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,8 +89,14 @@ import com.example.defensync.domain.model.TimeRange
 import com.example.defensync.domain.model.Weekday
 import com.example.defensync.domain.scheduling.SchedulingEngine
 import com.example.defensync.ui.components.AlignmentGrid
+import com.example.defensync.ui.components.InitialsAvatar
 import com.example.defensync.ui.components.TimeField
 import com.example.defensync.ui.components.WeeklyAvailabilityEditor
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 private val ConfirmGreen = Color(0xFF1B5E20)
 
@@ -117,63 +131,6 @@ fun DefenseDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                },
-                actions = {
-                    if (defense != null) {
-                        // Group chat lives in the app bar as a badged icon — the convention for a
-                        // secondary destination — instead of a full-width bar eating the layout.
-                        if (currentUid in defense.participantIds) {
-                            IconButton(onClick = { onOpenChat(defense.id, defense.title) }) {
-                                BadgedBox(badge = {
-                                    if (defense.unreadMessages > 0) {
-                                        Badge { Text(defense.unreadMessages.coerceAtMost(99).toString()) }
-                                    }
-                                }) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.Chat,
-                                        contentDescription = "Open group chat"
-                                    )
-                                }
-                            }
-                        }
-
-                        val canEdit = defense.canEdit(currentUid) &&
-                            defense.status != DefenseStatus.CANCELLED
-                        val canDelete = currentUid == defense.studentId
-                        if (canEdit || canDelete) {
-                            var menuOpen by remember { mutableStateOf(false) }
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
-                            }
-                            DropdownMenu(
-                                expanded = menuOpen,
-                                onDismissRequest = { menuOpen = false }
-                            ) {
-                                if (canEdit) {
-                                    DropdownMenuItem(
-                                        text = { Text("Edit group") },
-                                        onClick = { menuOpen = false; onEdit(defense.id) },
-                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-                                    )
-                                }
-                                if (canDelete) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text("Delete defense", color = MaterialTheme.colorScheme.error)
-                                        },
-                                        onClick = { menuOpen = false; showDeleteConfirm = true },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             )
         }
@@ -200,7 +157,7 @@ fun DefenseDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            HeroCard(defense)
+            HeroCard(defense, currentUid, onOpenChat, onEdit)
 
             if (currentUid in defense.participantIds) {
                 OutlinedButton(
@@ -231,11 +188,31 @@ fun DefenseDetailScreen(
             // The student's in-progress time pick, previewed on the overlap chart above the picker.
             var previewSlot by remember(defense.id) { mutableStateOf<AlignedSlot?>(null) }
 
-            OverlapCard(defense, previewSlot)
+            // Highlight the student's active pick if any; otherwise the already-scheduled time, so
+            // panel members (and anyone just viewing) see the requested time marked on the chart.
+            OverlapCard(
+                defense,
+                previewSlot = previewSlot ?: defense.slot,
+                previewLabel = if (previewSlot != null) "Your pick" else "Scheduled"
+            )
 
             AlignedTimesCard(defense, currentUid, vm, missing, slots, onPreview = { previewSlot = it })
 
             ResponsesCard(defense, currentUid, vm, onOpenDm)
+
+            if (currentUid == defense.studentId) {
+                OutlinedButton(
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Delete defense")
+                }
+            }
 
             Spacer(Modifier.height(4.dp))
         }
@@ -277,7 +254,12 @@ fun DefenseDetailScreen(
 }
 
 @Composable
-private fun HeroCard(defense: DefenseRequest) {
+private fun HeroCard(
+    defense: DefenseRequest,
+    currentUid: String,
+    onOpenChat: (String, String) -> Unit,
+    onEdit: (String) -> Unit
+) {
     val total = defense.memberIds.size
     val accepted = defense.acceptedCount
     val confirmed = defense.status == DefenseStatus.CONFIRMED
@@ -299,38 +281,52 @@ private fun HeroCard(defense: DefenseRequest) {
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // Scheduled time — the single most important fact — gets a prominent leading icon.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Event,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Scheduled time",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        defense.slot?.label ?: "Not chosen yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (defense.slot == null) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurface
-                    )
-                }
+            // People — plain labelled lines (matches the mockup).
+            val studentNames = defense.studentNames.ifEmpty { listOf(defense.studentName) }
+                .filter { it.isNotBlank() }
+            Text(
+                "Students: ${studentNames.joinToString(", ").ifBlank { "—" }}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Adviser: ${defense.adviserName.ifBlank { "Unassigned" }}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Scheduled time — the single most important fact — in a boxed field.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(16.dp)
+            ) {
+                Text(
+                    "SCHEDULED TIME",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                val slot = defense.slot
+                Text(
+                    if (slot == null) "Not chosen yet" else buildString {
+                        slotDateLabel(slot.date)?.let { append(it); append(" · ") }
+                        append("${TimeConfig.label(slot.start)} – ${TimeConfig.label(slot.end)}")
+                        append(" · ${TimeConfig.durationLabel(slot.durationMin)}")
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (slot == null) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface
+                )
             }
 
             if (total > 0 && defense.slot != null) {
@@ -364,42 +360,34 @@ private fun HeroCard(defense: DefenseRequest) {
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(16.dp))
-
-            // People — who this group is. Panelists' response status lives in the responses card.
-            val studentNames = defense.studentNames.ifEmpty { listOf(defense.studentName) }
-                .filter { it.isNotBlank() }
-            studentNames.forEach { name ->
-                PersonLine(name = name, role = "Student")
-                Spacer(Modifier.height(10.dp))
+            if (currentUid in defense.participantIds) {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { onOpenChat(defense.id, defense.title) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open group chat")
+                }
             }
-            PersonLine(name = defense.adviserName, role = "Adviser", accent = true)
-        }
-    }
-}
 
-@Composable
-private fun PersonLine(name: String, role: String, accent: Boolean = false) {
-    val container = if (accent) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-    else MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
-    val content = if (accent) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.secondary
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        InitialsAvatar(name, container = container, content = content)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(
-                name.ifBlank { "Unassigned" },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                role,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            val canEdit = defense.canEdit(currentUid) && defense.status != DefenseStatus.CANCELLED
+            if (canEdit) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { onEdit(defense.id) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Edit group (panel, adviser, students)")
+                }
+            }
         }
     }
 }
@@ -467,35 +455,6 @@ private fun StatTile(icon: ImageVector, value: String, label: String, modifier: 
 }
 
 @Composable
-private fun InitialsAvatar(
-    name: String,
-    container: Color,
-    content: Color,
-    size: Dp = 40.dp
-) {
-    Box(
-        Modifier.size(size).clip(CircleShape).background(container),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            initialsOf(name),
-            color = content,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-private fun initialsOf(name: String): String {
-    val parts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    return when {
-        parts.isEmpty() -> "?"
-        parts.size == 1 -> parts[0].take(2).uppercase()
-        else -> (parts.first().take(1) + parts.last().take(1)).uppercase()
-    }
-}
-
-@Composable
 private fun MyAvailabilityCard(
     defense: DefenseRequest,
     currentUid: String,
@@ -515,8 +474,7 @@ private fun MyAvailabilityCard(
         .filterValues { it.isNotEmpty() }
     val dirty = normalized != stored
 
-    // Panel members need to fill this in, so start expanded.
-    var expanded by remember(defense.id) { mutableStateOf(true) }
+    var expanded by remember(defense.id) { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -582,7 +540,11 @@ private fun MyAvailabilityCard(
 }
 
 @Composable
-private fun OverlapCard(defense: DefenseRequest, previewSlot: AlignedSlot? = null) {
+private fun OverlapCard(
+    defense: DefenseRequest,
+    previewSlot: AlignedSlot? = null,
+    previewLabel: String = "Your pick"
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Availability overlap", style = MaterialTheme.typography.titleMedium)
@@ -593,7 +555,7 @@ private fun OverlapCard(defense: DefenseRequest, previewSlot: AlignedSlot? = nul
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
-            AlignmentGrid(defense, previewSlot = previewSlot)
+            AlignmentGrid(defense, previewSlot = previewSlot, previewLabel = previewLabel)
         }
     }
 }
@@ -638,77 +600,190 @@ private fun AlignedTimesCard(
                     }
                 }
 
-                else -> DefenseTimePicker(defense, vm, slots, onPreview)
+                else -> DefenseTimePicker(defense, vm, onPreview)
             }
         }
     }
 }
 
 /**
- * Lets the student set the defense time. Suggested 3-hour windows appear as quick-pick chips that
- * populate the day + start; the student can also nudge the start to any exact minute (e.g. 10:33)
- * via the [TimeField]. The time must fit a window the whole panel is free, so the confirm button is
- * only enabled when the chosen 3-hour block sits inside a shared overlap window.
+ * Lets the student set the defense on a specific calendar date, for a chosen length. The date's
+ * weekday drives the panel's shared-availability check; suggested windows and the exact-time field
+ * respect the selected duration. Confirming sends the date + start + duration to the server, which
+ * rejects it if any panelist/adviser is already booked in an overlapping block that day.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun DefenseTimePicker(
     defense: DefenseRequest,
     vm: DefenseViewModel,
-    slots: List<AlignedSlot>,
     onPreview: (AlignedSlot?) -> Unit
 ) {
-    var day by remember(defense.id) {
-        mutableStateOf(defense.slot?.weekday ?: slots.firstOrNull()?.weekday ?: Weekday.MON)
+    var duration by remember(defense.id) {
+        mutableStateOf(defense.slot?.durationMin ?: TimeConfig.DEFENSE)
     }
+    var date by remember(defense.id) { mutableStateOf(defense.slot?.date) }
     var start by remember(defense.id) {
-        mutableStateOf(defense.slot?.start ?: slots.firstOrNull()?.start ?: TimeConfig.DAY_START)
+        mutableStateOf(defense.slot?.start ?: TimeConfig.DAY_START)
     }
     var showOverride by remember(defense.id) { mutableStateOf(false) }
+    var showDatePicker by remember(defense.id) { mutableStateOf(false) }
+    var showConfirm by remember(defense.id) { mutableStateOf(false) }
+    var showExact by remember(defense.id) { mutableStateOf(false) }
+
+    val actionError by vm.actionError.collectAsStateWithLifecycle()
+    val calendarEntries by vm.calendarEntries.collectAsStateWithLifecycle()
+
+    val weekday: Weekday? = date?.let { weekdayOf(it) }
+    val end = start + duration
+
+    // Immediate double-booking check: any OTHER scheduled defense on this date whose block overlaps
+    // this one and shares a panelist/adviser with us. Mirrors the server rule so it shows as-you-pick.
+    val conflictNames: List<String> = if (date == null) emptyList() else calendarEntries
+        .filter {
+            it.id != defense.id && it.date == date &&
+                it.status in listOf(DefenseStatus.PENDING, DefenseStatus.CONFIRMED) &&
+                it.start < end && start < it.end
+        }
+        .flatMap { it.facultyIds }
+        .toSet()
+        .intersect(defense.memberIds.toSet())
+        .map { defense.nameOf(it) }
+        .distinct()
+    val hasConflict = conflictNames.isNotEmpty()
+
+    // Suggested aligned windows + shared overlap, recomputed for the chosen duration and weekday.
+    val memberAvail = defense.memberIds.map { defense.availabilityOf(it) }
+    val daySlots = weekday?.let { wd ->
+        SchedulingEngine.findAlignedSlots(memberAvail, duration).filter { it.weekday == wd }
+    }.orEmpty()
+    val windows = weekday?.let { wd ->
+        SchedulingEngine.overlapRanges(defense.memberIds.map { defense.rangesOf(it, wd) })
+    }.orEmpty()
+    val fits = weekday != null && SchedulingEngine.fitsBlock(windows, start, duration)
 
     // Mirror the current pick onto the overlap chart above; clear it when the picker goes away.
-    LaunchedEffect(day, start) { onPreview(AlignedSlot(day, start)) }
+    LaunchedEffect(weekday, start, duration) {
+        weekday?.let { onPreview(AlignedSlot(it, start, date, duration)) }
+    }
     DisposableEffect(Unit) { onDispose { onPreview(null) } }
+    // A stale conflict/cap error shouldn't linger once the student changes the pick.
+    LaunchedEffect(date, start, duration) { vm.clearActionError() }
 
-    val windows = SchedulingEngine.overlapRanges(defense.memberIds.map { defense.rangesOf(it, day) })
-    val fits = SchedulingEngine.fitsBlock(windows, start)
-    val end = start + TimeConfig.DEFENSE
-
-    // Weekday selector — wraps instead of scrolling sideways.
-    Text("Pick a day", style = MaterialTheme.typography.titleSmall)
+    // 1) Date
+    SectionLabel("PICK A DATE")
     Spacer(Modifier.height(8.dp))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Weekday.entries.forEach { w ->
-            FilterChip(
-                selected = w == day,
-                onClick = { day = w },
-                label = { Text(w.short) }
-            )
-        }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable { showDatePicker = true }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.DateRange,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            date?.let { slotDateLabel(it) ?: it } ?: "Choose a date",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (date == null) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurface
+        )
     }
     Spacer(Modifier.height(16.dp))
 
-    // Suggested 3-hour windows for the chosen day, as a tappable vertical list.
-    val daySlots = slots.filter { it.weekday == day }
-    Text("Suggested windows · ${day.full}", style = MaterialTheme.typography.titleSmall)
+    // 2) Duration — hours + minutes steppers, 1h up to whatever still fits the day.
+    val applyDuration: (Int) -> Unit = { d ->
+        val clamped = d.coerceIn(TimeConfig.MIN_DEFENSE, TimeConfig.MAX_DEFENSE)
+        duration = clamped
+        // A longer block may push the start past the day's end — pull it back in.
+        if (start > TimeConfig.DAY_END - clamped) start = TimeConfig.DAY_END - clamped
+    }
+    SectionLabel("DEFENSE LENGTH")
+    Spacer(Modifier.height(8.dp))
+    DurationStepperRow(
+        label = "Hours",
+        value = "${duration / 60}",
+        onMinus = { applyDuration(duration - 60) },
+        onPlus = { applyDuration(duration + 60) },
+        minusEnabled = duration - 60 >= TimeConfig.MIN_DEFENSE,
+        plusEnabled = duration + 60 <= TimeConfig.MAX_DEFENSE
+    )
     Spacer(Modifier.height(4.dp))
+    DurationStepperRow(
+        label = "Minutes",
+        value = (duration % 60).toString().padStart(2, '0'),
+        onMinus = { applyDuration(duration - 30) },
+        onPlus = { applyDuration(duration + 30) },
+        minusEnabled = duration - 30 >= TimeConfig.MIN_DEFENSE,
+        plusEnabled = duration + 30 <= TimeConfig.MAX_DEFENSE
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "Length: ${TimeConfig.durationLabel(duration)}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(Modifier.height(16.dp))
+
+    if (showDatePicker) {
+        DefenseDatePickerDialog(
+            initialIso = date,
+            onDismiss = { showDatePicker = false },
+            onPick = { iso -> date = iso; showDatePicker = false }
+        )
+    }
+
+    if (weekday == null) {
+        Hint("Pick a date to see the times the whole panel is free.")
+        return
+    }
+
+    // 3) Suggested windows for the date's weekday + chosen duration.
+    Text("Suggested windows · ${weekday.full}", style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(8.dp))
     if (daySlots.isEmpty()) {
-        Hint("No 3-hour window everyone shares this day — set an exact time below.")
+        Hint("No ${TimeConfig.durationLabel(duration)} window everyone shares this day — set an exact time below.")
     } else {
-        daySlots.forEach { slot ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .selectable(selected = slot.start == start, onClick = { start = slot.start })
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(selected = slot.start == start, onClick = { start = slot.start })
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "${TimeConfig.label(slot.start)} – ${TimeConfig.label(slot.start + TimeConfig.DEFENSE)}",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            daySlots.forEach { slot ->
+                val selected = slot.start == start
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = if (selected) 0.18f else 0.06f)
+                        )
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = if (selected) 1f else 0.35f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .selectable(selected = selected, onClick = { start = slot.start })
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${TimeConfig.label(slot.start)} – ${TimeConfig.label(slot.start + duration)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        if (selected) "Selected" else "Propose",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
@@ -717,20 +792,82 @@ private fun DefenseTimePicker(
     HorizontalDivider()
     Spacer(Modifier.height(16.dp))
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Or set an exact time", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.width(12.dp))
-        TimeField(
-            value = start,
-            onValueChange = { start = it },
-            label = "Defense start",
-            minMinutes = TimeConfig.DAY_START,
-            maxMinutes = TimeConfig.DAY_END - TimeConfig.DEFENSE
+    val startMatchesSlot = daySlots.any { it.start == start }
+    val exactVisible = showExact || daySlots.isEmpty() || !startMatchesSlot
+    if (!exactVisible) {
+        Text(
+            "or set an exact time",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier.clickable { showExact = true }
         )
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Exact time", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.width(12.dp))
+            TimeField(
+                value = start,
+                onValueChange = { start = it },
+                label = "Defense start",
+                minMinutes = TimeConfig.DAY_START,
+                maxMinutes = TimeConfig.DAY_END - duration
+            )
+        }
     }
     Spacer(Modifier.height(10.dp))
 
-    if (fits) {
+    // A server-side rejection (panel conflict or the daily creation cap) — distinct from the
+    // availability warning below, and shown whether or not the block fits everyone's free time.
+    actionError?.let { msg ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(msg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+
+    if (hasConflict) {
+        // A panelist/adviser is already booked in an overlapping block — surfaced the instant the
+        // time is picked; there's no override for a double-booking, so no confirm button is offered.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${conflictNames.joinToString(", ")} already " +
+                    (if (conflictNames.size == 1) "has" else "have") +
+                    " a defense that overlaps ${TimeConfig.label(start)}–${TimeConfig.label(end)} on " +
+                    "${slotDateLabel(date) ?: date}. Pick another time or date.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+    } else if (fits) {
         Text(
             "${TimeConfig.label(start)} – ${TimeConfig.label(end)} · the whole panel is free",
             style = MaterialTheme.typography.bodyMedium,
@@ -738,7 +875,7 @@ private fun DefenseTimePicker(
         )
         Spacer(Modifier.height(12.dp))
         Button(
-            onClick = { vm.selectSlot(defense.id, AlignedSlot(day, start)) },
+            onClick = { showConfirm = true },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
@@ -795,8 +932,8 @@ private fun DefenseTimePicker(
             title = { Text("Set a time outside everyone's availability?") },
             text = {
                 Text(
-                    "${day.full}, ${TimeConfig.label(start)} – ${TimeConfig.label(end)} isn't inside a " +
-                        "3-hour window the whole panel is free.\n\n" +
+                    "${weekday.full}, ${TimeConfig.label(start)} – ${TimeConfig.label(end)} isn't inside a " +
+                        "${TimeConfig.durationLabel(duration)} window the whole panel is free.\n\n" +
                         "Only do this if you've already contacted your adviser and panelists — for " +
                         "example in the group chat — and they've agreed to this time. When they open " +
                         "this defense they'll see a warning that it's outside the availability they " +
@@ -806,7 +943,7 @@ private fun DefenseTimePicker(
             confirmButton = {
                 TextButton(onClick = {
                     showOverride = false
-                    vm.selectSlot(defense.id, AlignedSlot(day, start))
+                    vm.selectSlot(defense.id, AlignedSlot(weekday, start, date, duration))
                 }) { Text("Set time & notify", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
@@ -814,6 +951,147 @@ private fun DefenseTimePicker(
             }
         )
     }
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            icon = {
+                Icon(Icons.Default.Event, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            title = {
+                Text(if (defense.slot == null) "Notify the panel of this time?" else "Re-notify the panel?")
+            },
+            text = {
+                Text(
+                    "${slotDateLabel(date) ?: date}\n" +
+                        "${TimeConfig.label(start)} – ${TimeConfig.label(end)} · ${TimeConfig.durationLabel(duration)}\n\n" +
+                        "Panel: ${defense.memberIds.joinToString(", ") { defense.nameOf(it) }}\n\n" +
+                        "They'll be asked to accept or decline this time."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirm = false
+                    vm.selectSlot(defense.id, AlignedSlot(weekday, start, date, duration))
+                }) { Text(if (defense.slot == null) "Notify panel" else "Re-notify panel") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+/** One labeled +/− stepper row (e.g. Hours or Minutes) for the defense-length control. */
+@Composable
+private fun DurationStepperRow(
+    label: String,
+    value: String,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    minusEnabled: Boolean,
+    plusEnabled: Boolean
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(84.dp))
+        OutlinedIconButton(onClick = onMinus, enabled = minusEnabled) {
+            Text("–", style = MaterialTheme.typography.titleLarge)
+        }
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(52.dp)
+        )
+        OutlinedIconButton(onClick = onPlus, enabled = plusEnabled) {
+            Text("+", style = MaterialTheme.typography.titleLarge)
+        }
+    }
+}
+
+/** A date picker restricted to today onward, with Sundays disabled (no defenses on Sundays). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DefenseDatePickerDialog(
+    initialIso: String?,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit
+) {
+    val todayUtc = todayUtcMidnightMillis()
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = initialIso?.let { isoToUtcMillis(it) } ?: todayUtc,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                if (utcTimeMillis < todayUtc) return false
+                val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                cal.timeInMillis = utcTimeMillis
+                return cal.get(Calendar.DAY_OF_WEEK) != Calendar.SUNDAY
+            }
+        }
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = { state.selectedDateMillis?.let { onPick(utcMillisToIso(it)) } },
+                enabled = state.selectedDateMillis != null
+            ) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    ) {
+        DatePicker(state = state)
+    }
+}
+
+/* ---- Date helpers. Material's DatePicker works in UTC-midnight millis; we store ISO yyyy-MM-dd. ---- */
+
+private fun ymdToUtcMillis(year: Int, month0: Int, day: Int): Long {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.clear()
+    cal.set(year, month0, day, 0, 0, 0)
+    return cal.timeInMillis
+}
+
+private fun todayUtcMidnightMillis(): Long {
+    val local = Calendar.getInstance()
+    return ymdToUtcMillis(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
+}
+
+private fun utcMillisToIso(millis: Long): String {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.timeInMillis = millis
+    return "%04d-%02d-%02d".format(
+        cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH)
+    )
+}
+
+private fun isoToUtcMillis(iso: String): Long? {
+    val p = iso.split("-").mapNotNull { it.toIntOrNull() }
+    if (p.size != 3) return null
+    return ymdToUtcMillis(p[0], p[1] - 1, p[2])
+}
+
+private fun weekdayOf(iso: String): Weekday? {
+    val millis = isoToUtcMillis(iso) ?: return null
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.timeInMillis = millis
+    return when (cal.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.MONDAY -> Weekday.MON
+        Calendar.TUESDAY -> Weekday.TUE
+        Calendar.WEDNESDAY -> Weekday.WED
+        Calendar.THURSDAY -> Weekday.THU
+        Calendar.FRIDAY -> Weekday.FRI
+        Calendar.SATURDAY -> Weekday.SAT
+        else -> null   // Sunday — not a scheduling day
+    }
+}
+
+/** "Mon, Jul 20, 2026" from an ISO date, or null if it can't be parsed. */
+private fun slotDateLabel(iso: String?): String? {
+    val millis = iso?.let { isoToUtcMillis(it) } ?: return null
+    val fmt = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault())
+    fmt.timeZone = TimeZone.getTimeZone("UTC")
+    return fmt.format(Date(millis))
 }
 
 @Composable
@@ -836,7 +1114,8 @@ private fun ResponsesCard(
                 defense.status in listOf(DefenseStatus.PENDING, DefenseStatus.CONFIRMED) &&
                 !SchedulingEngine.fitsBlock(
                     SchedulingEngine.mergeRanges(defense.rangesOf(currentUid, slot.weekday)),
-                    slot.start
+                    slot.start,
+                    slot.durationMin
                 )
             if (outsideMyAvailability) {
                 Spacer(Modifier.height(8.dp))
@@ -874,40 +1153,32 @@ private fun ResponsesCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        InitialsAvatar(
-                            name,
-                            container = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                            content = MaterialTheme.colorScheme.secondary,
-                            size = 36.dp
-                        )
+                        InitialsAvatar(name, size = 40.dp)
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text(name, style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                roleLabel,
-                                style = MaterialTheme.typography.bodySmall,
+                                roleLabel.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        ResponseBadge(defense.responseOf(memberId))
                         if (memberId == currentUid) {
                             Text(
                                 "You",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(end = 8.dp)
+                                modifier = Modifier.padding(start = 8.dp)
                             )
                         } else {
-                            IconButton(onClick = { onOpenDm(memberId, name) }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Chat,
-                                    contentDescription = "Message $name",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                            TextButton(onClick = { onOpenDm(memberId, name) }) {
+                                Text("Message", color = MaterialTheme.colorScheme.primary)
                             }
                         }
-                        ResponseBadge(defense.responseOf(memberId))
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -945,6 +1216,17 @@ private fun ResponsesCard(
     }
 }
 
+/** An uppercase section label (e.g. "PICK A DATE") for the scheduling picker. */
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
 @Composable
 private fun Hint(text: String) {
     Text(
@@ -957,10 +1239,17 @@ private fun Hint(text: String) {
 
 @Composable
 private fun ResponseBadge(status: ResponseStatus) {
-    val (text, color) = when (status) {
-        ResponseStatus.ACCEPTED -> "Accepted" to ConfirmGreen
-        ResponseStatus.DECLINED -> "Declined" to Color(0xFFB71C1C)
-        ResponseStatus.PENDING -> "Pending" to Color(0xFF9E9E9E)
+    val (text, bg, fg) = when (status) {
+        ResponseStatus.ACCEPTED -> Triple("Accepted", ConfirmGreen, Color.White)
+        ResponseStatus.DECLINED -> Triple("Declined", Color(0xFFB71C1C), Color.White)
+        ResponseStatus.PENDING -> Triple("Pending", Color(0xFFF9A825), Color.Black)
     }
-    Text(text, color = color, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(text, color = fg, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+    }
 }

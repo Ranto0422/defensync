@@ -17,7 +17,8 @@
       "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb shell *)",
       "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb install *)",
       "Bash(/Users/rapt/Library/Android/sdk/platform-tools/adb exec-out *)",
-      "Bash(/Applications/XAMPP/bin/mysql -u root defensync -N -e 'SELECT id, email, api_token FROM users;')"
+      "Bash(/Applications/XAMPP/bin/mysql -u root defensync -N -e 'SELECT id, email, api_token FROM users;')",
+      "Bash(grep -noE '\"[^\"]{6,60}\"' ui/defense/DefenseDetailScreen.kt)"
     ]
   }
 }

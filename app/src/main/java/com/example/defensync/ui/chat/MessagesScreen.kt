@@ -1,5 +1,6 @@
 package com.example.defensync.ui.chat
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -84,25 +88,44 @@ private fun InboxRow(item: InboxItem, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(
-            if (item.type == ConversationType.GROUP) Icons.Default.Groups else Icons.Default.Person,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
-        )
+        val isGroup = item.type == ConversationType.GROUP
+        val avatarTint = if (isGroup) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.secondary
+        Box(
+            Modifier
+                .size(44.dp)
+                .background(avatarTint.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (isGroup) Icons.Default.Groups else Icons.Default.Person,
+                contentDescription = null,
+                tint = avatarTint
+            )
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     item.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (item.unread > 0) FontWeight.Bold else FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                if (item.type == ConversationType.GROUP) {
+                if (isGroup) {
                     Text(
-                        "  · Group",
+                        "GROUP",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }

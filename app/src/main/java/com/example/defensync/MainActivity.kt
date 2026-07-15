@@ -36,20 +36,31 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DefenSyncApp(sessionVm: SessionViewModel = viewModel()) {
     val session by sessionVm.session.collectAsStateWithLifecycle()
+    val addingAccount by sessionVm.addingAccount.collectAsStateWithLifecycle()
+    val accounts by sessionVm.accounts.collectAsStateWithLifecycle()
+    val switchMessage by sessionVm.switchMessage.collectAsStateWithLifecycle()
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        when (val state = session) {
-            SessionState.Loading -> Box(
+        when {
+            // Adding another account: show sign-in, but let them back out to the current session.
+            addingAccount -> AuthScreen(sessionVm, onCancel = sessionVm::cancelAddAccount)
+
+            session is SessionState.Loading -> Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
 
-            SessionState.LoggedOut -> AuthScreen(sessionVm)
+            session is SessionState.LoggedOut -> AuthScreen(sessionVm)
 
-            is SessionState.LoggedIn -> MainScaffold(
-                profile = state.profile,
+            session is SessionState.LoggedIn -> MainScaffold(
+                profile = (session as SessionState.LoggedIn).profile,
+                accounts = accounts,
+                switchMessage = switchMessage,
+                onSwitchMessageShown = sessionVm::consumeSwitchMessage,
+                onSwitchAccount = sessionVm::switchAccount,
+                onAddAccount = sessionVm::addAccount,
                 onSignOut = sessionVm::signOut
             )
         }

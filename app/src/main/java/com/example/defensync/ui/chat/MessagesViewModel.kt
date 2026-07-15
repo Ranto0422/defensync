@@ -40,6 +40,13 @@ class MessagesViewModel : ViewModel() {
         }
     }
 
+    /** Refresh the inbox immediately (e.g. after an account switch) instead of waiting for the poll. */
+    fun reload() {
+        viewModelScope.launch {
+            runCatching { repo.inbox() }.onSuccess { _items.value = it }
+        }
+    }
+
     private companion object {
         const val POLL_INTERVAL_MS = 4000L
     }

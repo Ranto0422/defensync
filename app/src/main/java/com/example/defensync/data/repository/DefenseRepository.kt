@@ -6,6 +6,7 @@ import com.example.defensync.data.dto.UpdateMembersRequest
 import com.example.defensync.data.dto.toDomain
 import com.example.defensync.data.remote.DefenseApi
 import com.example.defensync.domain.model.AlignedSlot
+import com.example.defensync.domain.model.CalendarEntry
 import com.example.defensync.domain.model.ChatMessage
 import com.example.defensync.domain.model.DefenseRequest
 import com.example.defensync.domain.model.TimeRange
@@ -14,6 +15,9 @@ import com.example.defensync.domain.model.Weekday
 class DefenseRepository(private val defenseApi: DefenseApi) {
 
     suspend fun list(): List<DefenseRequest> = defenseApi.list().map { it.toDomain() }
+
+    /** All scheduled defenses in the system, for the shared calendar. */
+    suspend fun calendar(): List<CalendarEntry> = defenseApi.calendar().map { it.toDomain() }
 
     suspend fun create(
         title: String,
@@ -30,7 +34,10 @@ class DefenseRepository(private val defenseApi: DefenseApi) {
         defenseApi.updateAvailability(defenseId, availability.toWire()).toDomain()
 
     suspend fun selectSlot(defenseId: String, slot: AlignedSlot): DefenseRequest =
-        defenseApi.selectSlot(defenseId, SlotDto(slot.weekday.name, slot.start)).toDomain()
+        defenseApi.selectSlot(
+            defenseId,
+            SlotDto(slot.weekday.name, slot.start, slot.date, slot.durationMin)
+        ).toDomain()
 
     suspend fun respond(defenseId: String, accept: Boolean): DefenseRequest =
         defenseApi.respond(defenseId, accept).toDomain()

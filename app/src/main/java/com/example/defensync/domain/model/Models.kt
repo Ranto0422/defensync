@@ -39,13 +39,16 @@ object TimeConfig {
     const val DAY_START = 7 * 60      // 07:00
     const val DAY_END = 21 * 60       // 21:00
     const val SLOT = 30               // granularity, minutes
-    const val DEFENSE = 180           // defense length, minutes (3 hours)
+    const val DEFENSE = 180           // default defense length, minutes (3 hours)
+    const val MIN_DEFENSE = 60        // shortest selectable defense (1 hour)
+    val MAX_DEFENSE = DAY_END - DAY_START   // longest that can still fit the day (07:00–21:00 = 14h)
 
     /** 30-min slot start times used for coverage/alignment and the visualization grid rows. */
     val slotStarts: List<Int> = (DAY_START until DAY_END step SLOT).toList()
 
-    /** Valid defense start times so a 3-hour block still fits the day. */
-    val defenseStarts: List<Int> = (DAY_START..(DAY_END - DEFENSE) step SLOT).toList()
+    /** Valid defense start times so a [duration]-long block still fits the day. */
+    fun defenseStarts(duration: Int = DEFENSE): List<Int> =
+        (DAY_START..(DAY_END - duration) step SLOT).toList()
 
     /** Selectable times for range endpoints (inclusive of DAY_END). */
     val timeOptions: List<Int> = (DAY_START..DAY_END step SLOT).toList()
@@ -57,6 +60,17 @@ object TimeConfig {
         val period = if (h24 < 12) "AM" else "PM"
         val h = when (val hh = h24 % 12) { 0 -> 12; else -> hh }
         return "$h:${m.toString().padStart(2, '0')} $period"
+    }
+
+    /** Compact defense-length label: "3h", "1h 30m", "45m". */
+    fun durationLabel(minutes: Int): String {
+        val h = minutes / 60
+        val m = minutes % 60
+        return when {
+            h > 0 && m > 0 -> "${h}h ${m}m"
+            h > 0 -> "${h}h"
+            else -> "${m}m"
+        }
     }
 
     /**
@@ -107,9 +121,18 @@ data class TimeRange(val start: Int, val end: Int) {
     val label: String get() = "${TimeConfig.label(start)} – ${TimeConfig.label(end)}"
 }
 
-/** A concrete 3-hour window that works for everyone on a defense. */
-data class AlignedSlot(val weekday: Weekday, val start: Int) {
-    val end: Int get() = start + TimeConfig.DEFENSE
+/**
+ * A concrete window that works for everyone on a defense: a start time on a weekday, optionally
+ * pinned to a calendar [date], for [durationMin] minutes (default 3 hours, but student-editable).
+ */
+data class AlignedSlot(
+    val weekday: Weekday,
+    val start: Int,
+    /** ISO calendar date (yyyy-MM-dd) once scheduled on the calendar; null for a weekday-only pick. */
+    val date: String? = null,
+    val durationMin: Int = TimeConfig.DEFENSE
+) {
+    val end: Int get() = start + durationMin
     val label: String
         get() = "${weekday.full}  ${TimeConfig.label(start)} – ${TimeConfig.label(end)}"
 
@@ -123,6 +146,27 @@ data class AlignedSlot(val weekday: Weekday, val start: Int) {
             return AlignedSlot(Weekday.from(parts[0]), start)
         }
     }
+}
+
+/**
+ * A single scheduled defense as shown in the shared calendar (every user sees all of these).
+ * [date] is ISO yyyy-MM-dd; [start]/[end] are minutes-from-midnight.
+ */
+data class CalendarEntry(
+    val id: String,
+    val title: String,
+    val adviserName: String,
+    val panelistNames: List<String>,
+    /** Adviser + panelist user IDs — used to detect double-booking conflicts client-side. */
+    val facultyIds: List<String>,
+    val date: String,
+    val start: Int,
+    val durationMin: Int,
+    val status: DefenseStatus
+) {
+    val end: Int get() = start + durationMin
+    /** Everyone booked by this defense (adviser + panelists). */
+    val facultyNames: List<String> get() = (listOf(adviserName) + panelistNames).filter { it.isNotBlank() }
 }
 
 /** A registered user + their weekly availability (weekday name -> list of ranges). */
