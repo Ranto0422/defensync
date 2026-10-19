@@ -1,116 +1,105 @@
 # DefenSync
 
-An Android app (Kotlin + Jetpack Compose) that aligns thesis/capstone **defense schedules** between a
-student, their adviser, and panelists. Everyone marks when they're free; the app finds the 3-hour
-windows that work for the whole panel and lets the student lock one in. The backend is a **PHP + MySQL
-REST API** served by **XAMPP**, and the app talks to it with the **Ktor** HTTP client. No Firebase, no
-Cloud Functions.
+An Android app that finds a thesis defense time that works for a student, their adviser and every panelist. Everyone marks when they are free, the app computes the windows the whole panel shares, and the student locks one in.
+
+![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)
+![Ktor](https://img.shields.io/badge/Ktor_client-087CFA?logo=ktor&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP_8-777BB4?logo=php&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)
+
+| | |
+|---|---|
+| **Problem** | Scheduling a defense means aligning 3 to 5 busy people by hand over chat |
+| **Stack** | Kotlin, Jetpack Compose (Material 3), MVVM with StateFlow, Ktor client / PHP 8 REST API, MySQL |
+| **Size** | ~7k lines of Kotlin, plus a PHP API with 4 controllers |
+| **Highlights** | Exact-minute interval overlap engine with unit tests, token auth, group and direct chat, configurable server address |
 
 ## Features
 
-- **Role-based accounts** — sign up as a **Student** or **Professor**; the student assigns adviser vs.
-  panelist per defense. Students register with a **student number** (used to search + add group members).
-- **Weekly availability** — mark the hours you're usually free (Mon–Sat, 7:00 AM–9:00 PM) as a reusable
-  default, then fine-tune it per defense group.
-- **Overlap timeline** — a vertical, exact-minute timeline shows when each panel member is free and the
-  windows the whole panel shares (e.g. free only until 4:35 PM renders truthfully, not snapped).
-- **Aligned times** — the app suggests every 3 consecutive free hours that works for everyone; the
-  student can pick a suggestion or set an **exact custom time** (e.g. 10:33 AM), validated to fit a
-  window everyone shares.
-- **Confirm & respond** — the student confirms a time, each member Accepts/Declines, and all-accept ⇒
-  **Confirmed**. A group schedule screen shows the confirmed time against everyone's day.
-- **Messaging** — group and direct chat between participants.
+- **Two roles.** Students and professors sign up separately. A student creates a defense group and assigns one adviser, the panelists and any co-students (searchable by student number).
+- **Weekly availability.** Mark the hours you are usually free (Mon to Sat, 7:00 AM to 9:00 PM) once, then adjust it per defense group.
+- **Overlap timeline.** A vertical timeline shows each member's free time and the windows everyone shares, to the exact minute (free until 4:35 PM shows as 4:35, not rounded).
+- **Suggested times.** The app lists every 3-hour block that fits everyone. The student can pick one or type an exact custom time, which is checked against the shared windows.
+- **Confirm and respond.** The student proposes a time, each member accepts or declines, and the defense is confirmed once everyone accepts.
+- **Messaging.** Group chat per defense and one-on-one direct messages, with unread counts.
+- **Multiple saved accounts** on one device, and a setting to point the app at any server IP.
 
-## How it works
+## How the scheduling works
 
-1. Sign up as **Student** or **Professor**.
-2. On **My Schedule**, mark the hours you're usually free — a reusable default template.
-3. A **student** creates a defense **group** (title, one adviser, panelists, optional co-students).
-4. Inside the group, each participant tweaks availability *for that group* (seeded from their default).
-5. The app lists every **3 consecutive free hours** that works for everyone.
-6. The student picks (or types) a window → each member **Accepts/Declines** → all accept ⇒ **Confirmed**.
+The core logic is in [`SchedulingEngine.kt`](app/src/main/java/com/example/defensync/domain/scheduling/SchedulingEngine.kt) and is pure Kotlin with no Android dependencies, so it is unit tested directly:
 
-## Tech stack
+1. `mergeRanges` unions each person's overlapping or touching free ranges.
+2. `overlapRanges` intersects the merged ranges of every member to get the windows the whole panel shares.
+3. `findAlignedSlots` walks those windows and returns every start time where a full 3-hour defense fits.
+4. `fitsBlock` validates a custom time the student types in.
 
-| Layer | Tech |
-|-------|------|
-| UI | Jetpack Compose (Material 3), Navigation Compose |
-| Architecture | MVVM, `StateFlow` + `collectAsStateWithLifecycle` |
-| Networking | Ktor client, token (`Authorization: Bearer …`) auth |
-| Backend | PHP 8 (PDO), MySQL, served by XAMPP (Apache) |
+Tests: [`OverlapRangesTest.kt`](app/src/test/java/com/example/defensync/OverlapRangesTest.kt), [`FitsBlockTest.kt`](app/src/test/java/com/example/defensync/FitsBlockTest.kt).
 
 ## Project structure
 
 ```
-app/                                  Android app (Kotlin + Compose)
-  src/main/java/com/example/defensync/
-    core/        network client, token store, service locator
-    data/        DTOs, Ktor remote APIs, repositories
-    domain/      models + scheduling engine (overlap / aligned windows)
-    ui/          Compose screens (auth, schedule, defense, chat, components)
-  src/test/                           unit tests (scheduling logic)
+defensync/
+├── app/src/main/java/com/example/defensync/
+│   ├── core/          HTTP client, token store, server URL setting, service locator
+│   ├── data/          DTOs, Ktor API classes, repositories
+│   ├── domain/        models and the scheduling engine
+│   └── ui/            Compose screens: auth, schedule, defense, chat, shared components
+├── app/src/test/      unit tests for the scheduling engine
+└── backend/           PHP REST API (copy into XAMPP's htdocs)
+    ├── index.php      front controller and router
+    ├── controllers/   Auth, User, Defense, DirectMessage
+    ├── lib/           Database, Auth, Request, Response helpers
+    ├── config.php     MySQL connection settings
+    └── schema.sql     database schema
 ```
 
-The **backend** PHP files live in the XAMPP web root at `/Applications/XAMPP/htdocs/defensync/`:
-a front controller (`index.php`) routing to `controllers/`, with `lib/` helpers and `schema.sql`.
+## Running it
 
-## Requirements
+You need Android Studio, an Android emulator (or a phone on the same Wi-Fi), and XAMPP with Apache and MySQL.
 
-- **Android Studio** (use its bundled JBR as `JAVA_HOME`); the app builds against **compileSdk 37**.
-- An **Android emulator** (or a physical device on the same network).
-- **XAMPP** with **Apache** + **MySQL** (PHP 8+).
+### 1. Backend
 
-## Setup
-
-### 1. Backend (XAMPP)
-
-The PHP files are at `/Applications/XAMPP/htdocs/defensync/`.
-
-1. Open **XAMPP** and **Start** both **Apache** and **MySQL**.
-2. Create the database — open http://localhost/phpmyadmin → **Import** →
-   choose `/Applications/XAMPP/htdocs/defensync/schema.sql` → **Go**.
-   (Or run: `/Applications/XAMPP/bin/mysql -u root < /Applications/XAMPP/htdocs/defensync/schema.sql`)
-3. If your MySQL `root` user has a password, set it in
-   `/Applications/XAMPP/htdocs/defensync/config.php` (defaults to `root` / no password).
-4. Verify — open http://localhost/defensync/ → you should see
-   `{"service":"DefenSync API","status":"ok"}`.
+1. Copy the `backend/` folder into XAMPP's web root and rename it `defensync`:
+   - macOS: `/Applications/XAMPP/htdocs/defensync/`
+   - Windows: `C:\xampp\htdocs\defensync\`
+2. Start **Apache** and **MySQL** in XAMPP.
+3. Open http://localhost/phpmyadmin, choose **Import**, and import `defensync/schema.sql`.
+4. If your MySQL `root` user has a password, set it in `config.php`.
+5. Open http://localhost/defensync/. You should see `{"service":"DefenSync API","status":"ok"}`.
 
 ### 2. App
 
-1. Open the project in **Android Studio** and let Gradle sync.
-2. The base URL is `http://10.0.2.2/defensync/` (in `core/network/ApiClient.kt`) — `10.0.2.2` is how the
-   **Android emulator** reaches XAMPP on your Mac. Build & run on an emulator.
-3. **Physical phone?** Put the phone on the same Wi-Fi and change `ApiConfig.BASE_URL` to your Mac's LAN
-   IP, e.g. `http://192.168.1.20/defensync/`.
+1. Open the project in Android Studio and let Gradle sync.
+2. Run it on an emulator. The default server address is `http://10.0.2.2/defensync/`, which is how the emulator reaches your computer.
+3. On a physical phone, change the server address in the app to your computer's LAN IP, for example `http://192.168.1.20/defensync/`.
 
-Command line (uses Android Studio's bundled JDK):
+Run the unit tests:
 
 ```bash
-JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew :app:assembleDebug
-JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest
 ```
 
-## API reference (base `http://localhost/defensync/`)
+## API reference
+
+Base URL: `http://localhost/defensync/`. Every request after login sends `Authorization: Bearer <token>`. Passwords are stored with PHP `password_hash`.
 
 | Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/auth/register` | Create account → `{token, user}` |
-| POST | `/auth/login` | Log in → `{token, user}` |
+|---|---|---|
+| POST | `/auth/register` | Create account, returns `{token, user}` |
+| POST | `/auth/login` | Log in, returns `{token, user}` |
 | GET | `/auth/me` | Current user |
 | GET | `/professors` | Professors a student can invite |
-| GET | `/students` | Students (search by name / number) |
-| GET/PUT | `/availability` | Get/replace my default weekly schedule |
-| GET | `/defenses` | Defenses I'm part of |
-| POST | `/defenses` | Create a group (student) |
+| GET | `/students` | Search students by name or number |
+| GET, PUT | `/availability` | Get or replace my default weekly schedule |
+| GET, POST | `/defenses` | List my defenses, or create a group |
 | GET | `/defenses/{id}` | One defense |
-| PUT | `/defenses/{id}/members` | Update adviser/panelists/co-students |
-| PUT | `/defenses/{id}/availability` | Replace my availability for that group |
-| POST | `/defenses/{id}/slot` | Student confirms a time |
-| POST | `/defenses/{id}/respond` | Member accepts/declines |
+| PUT | `/defenses/{id}/members` | Update adviser, panelists, co-students |
+| PUT | `/defenses/{id}/availability` | My availability for this group |
+| POST | `/defenses/{id}/slot` | Student proposes a time |
+| POST | `/defenses/{id}/respond` | Member accepts or declines |
 | POST | `/defenses/{id}/cancel` | Student cancels |
-| GET/POST | `/defenses/{id}/messages` | Group chat thread |
-| GET/POST | `/messages/{userId}` | Direct 1-on-1 chat thread |
+| GET, POST | `/defenses/{id}/messages` | Group chat |
+| GET, POST | `/messages/{userId}` | Direct chat |
 
-Auth: register/login returns a token stored on the device; every request sends it as
-`Authorization: Bearer <token>`. Passwords are hashed with PHP `password_hash`. Since REST has no push,
-the defense list polls every ~4s while open and refreshes immediately after any action.
+REST has no push, so the defense list polls about every 4 seconds while open and refreshes right after any action.
